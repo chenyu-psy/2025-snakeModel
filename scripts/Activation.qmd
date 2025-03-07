@@ -1,0 +1,362 @@
+---
+title: "Activation plot"
+format: html
+editor_options: 
+  chunk_output_type: console
+---
+
+# 1 Initial setting
+```{r setup, include=FALSE}
+
+# for knitting
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 1.1 Clear workspace and set up default color
+```{r reset, include=FALSE}
+graphics.off()
+rm(list=ls(all.names = TRUE))
+options(digits = 3)
+
+```
+
+## 1.2 Package and file path
+```{r primary setting, include=FALSE}
+
+# package list
+packages = c("tidyverse", "ggpubr", "ggimage")
+# get the package names that are not installed
+missing_packages <- setdiff(packages, rownames(installed.packages()))
+if (length(missing_packages) > 0) install.packages(missing_packages)
+# library package
+suppressMessages(sapply(packages, library, character.only = TRUE))
+
+# import private functions (do not print the output)
+nothing <- sapply(list.files("./functions", pattern = "*.R", full.names = TRUE), source)
+rm(nothing)
+
+
+# theme
+theme_set(theme_bw())
+
+# task name
+figure_path <- str_glue("./figures/Figures_Activation/")
+
+# check whether the folders are existent or not. If not, create a new one
+dir.create(file.path(figure_path), recursive=T, showWarnings = FALSE)
+```
+
+
+# One Apple
+
+## Data
+```{r}
+
+# Parameters
+apple_x <- 1200
+apple_y <- 600
+beta <- -5.2  # You can adjust this parameter to control how quickly density drops off
+
+# Create a grid of points (using fewer points for efficiency)
+# Note: Using by=1 will create a very large dataset (over 2 million points)
+# Consider using a larger step size for development and then reducing for final output
+Data_oneApple <- expand_grid(
+  x = seq(0, 1920, by = 1),  # Using by=5 for development, change to by=1 for final output
+  y = seq(0, 1080, by = 1)   # Using by=5 for development, change to by=1 for final output
+)
+
+# Calculate density based on distance from peak point
+Data_oneApple <- Data_oneApple %>%
+  mutate(
+    distance = sqrt((x - apple_x)^2 + (y - apple_y)^2),
+    density = exp(-exp(beta) * distance),
+    density = ifelse(density < 0.10, 0, density)
+  )
+
+# Your image positions
+images <- data.frame(
+  x = c(408.34, 1079.43, 728.14, 1482.78, 155.29, 1657.93, 977.81, 510.95,
+        1200, 273.80, 1771.30, 876.12, 1329.45, 1475.61, 564.35, 1866.55),
+  y = c(582.94, 813.42, 354.66, 217.32, 817.19, 642.46, 143.95, 982.55,
+        600, 245.09, 957.13, 673.79, 967.36, 683.32, 155.42, 420.75),
+  image = "./images/bush.png"  # Add the image path to the dataframe
+)
+
+```
+
+## Plot
+```{r}
+
+# Create the main plot
+Plot_oneApple <- ggplot() +  # Start with an empty plot
+  # Add the density tiles with explicit data reference
+  geom_tile(
+    data = Data_oneApple ,
+    aes(x = x, y = y, fill = density)
+  ) +
+  # Add the images with explicit data reference and aesthetics
+  ggimage::geom_image(
+    data = images,
+    aes(x = x, y = y, image = image),  # Specify image as an aesthetic
+    size = 0.12  # Adjust size as needed (0.3 might be too large)
+  ) +
+  # Continue with your styling
+  scale_fill_gradientn(
+    colors = c("white", "#CCCCCC", "#777777", "#333333", "#000000"),
+    values = c(0, 0.25, 0.5, 0.75, 1)
+  ) +
+  coord_cartesian(xlim = c(0, 1920), ylim = c(0, 1080)) +  # Use this instead
+  theme_void() +
+  labs(fill = "Activation") +
+  theme(legend.position = "none")
+
+ggsave(
+  plot = Plot_oneApple,
+  filename = str_glue("{figure_path}OneApple.pdf"),
+  width = 9.6,  height = 5.4
+)
+
+```
+
+
+
+# Two Apple
+
+## Data
+
+```{r}
+
+# Parameters
+apple1_x <- 1200
+apple1_y <- 600
+apple2_x <- 408.34
+apple2_y <- 582.94
+beta <- -5.2  # You can adjust this parameter to control how quickly density drops off
+
+# Create a grid of points (using fewer points for efficiency)
+# Note: Using by=1 will create a very large dataset (over 2 million points)
+# Consider using a larger step size for development and then reducing for final output
+Data_twoApple <- expand_grid(
+  x = seq(0, 1920, by = 1),  # Using by=5 for development, change to by=1 for final output
+  y = seq(0, 1080, by = 1)   # Using by=5 for development, change to by=1 for final output
+)
+
+# Calculate density based on distance from peak point
+Data_twoApple <- Data_twoApple %>%
+  mutate(
+    distance1 = sqrt((x - apple1_x)^2 + (y - apple1_y)^2),
+    distance2 = sqrt((x - apple2_x)^2 + (y - apple2_y)^2),
+    density1 = exp(-exp(beta) * distance1),
+    density2 = exp(-exp(beta) * distance2),
+    density = density1 + density2,
+    density = ifelse(density < 0.10, 0, density)
+  )
+
+# Your image positions
+images <- data.frame(
+  x = c(408.34, 1079.43, 728.14, 1482.78, 155.29, 1657.93, 977.81, 510.95,
+        1200, 273.80, 1771.30, 876.12, 1329.45, 1475.61, 564.35, 1866.55),
+  y = c(582.94, 813.42, 354.66, 217.32, 817.19, 642.46, 143.95, 982.55,
+        600, 245.09, 957.13, 673.79, 967.36, 683.32, 155.42, 420.75),
+  image = "./images/bush.png"  # Add the image path to the dataframe
+)
+
+
+```
+
+## Plot
+```{r}
+
+# Create the main plot
+Plot_twoApple <- ggplot() +  # Start with an empty plot
+  # Add the density tiles with explicit data reference
+  geom_tile(
+    data = Data_twoApple ,
+    aes(x = x, y = y, fill = density)
+  ) +
+  # Add the images with explicit data reference and aesthetics
+  ggimage::geom_image(
+    data = images,
+    aes(x = x, y = y, image = image),  # Specify image as an aesthetic
+    size = 0.12  # Adjust size as needed (0.3 might be too large)
+  ) +
+  # Continue with your styling
+  scale_fill_gradientn(
+    colors = c("white", "#CCCCCC", "#777777", "#333333", "#000000"),
+    values = c(0, 0.25, 0.5, 0.75, 1)
+  ) +
+  coord_cartesian(xlim = c(0, 1920), ylim = c(0, 1080)) +  # Use this instead
+  theme_void() +
+  labs(fill = "Activation") +
+  theme(legend.position = "none")
+
+ggsave(
+  plot = Plot_twoApple,
+  filename = str_glue("{figure_path}TwoApple.pdf"),
+  width = 9.6,  height = 5.4
+)
+
+```
+
+# One Apple with grape
+
+## Data
+
+```{r}
+
+# Parameters
+apple1_x <- 1200
+apple1_y <- 600
+grape_x <- 600
+grape_y <- 720
+beta <- -5.2  # You can adjust this parameter to control how quickly density drops off
+betag <- -4.8
+
+# Create a grid of points (using fewer points for efficiency)
+# Note: Using by=1 will create a very large dataset (over 2 million points)
+# Consider using a larger step size for development and then reducing for final output
+Data_oneAppleGrape <- expand_grid(
+  x = seq(0, 1920, by = 1),  # Using by=5 for development, change to by=1 for final output
+  y = seq(0, 1080, by = 1)   # Using by=5 for development, change to by=1 for final output
+)
+
+# Calculate density based on distance from peak point
+Data_oneAppleGrape <- Data_oneAppleGrape %>%
+  mutate(
+    distance1 = sqrt((x - apple1_x)^2 + (y - apple1_y)^2),
+    distanceg = sqrt((x - grape_x)^2 + (y - grape_y)^2),
+    density1 = exp(-exp(beta) * distance1),
+    densityg = exp(-exp(betag) * distanceg),
+    density = density1 + densityg,
+    density = ifelse(density < 0.10, 0, density)
+  )
+
+# Your image positions
+images <- data.frame(
+  x = c(408.34, 1079.43, 728.14, 1482.78, 155.29, 1657.93, 977.81, 510.95,
+        1200, 273.80, 1771.30, 876.12, 1329.45, 1475.61, 564.35, 1866.55,grape_x),
+  y = c(582.94, 813.42, 354.66, 217.32, 817.19, 642.46, 143.95, 982.55,
+        600, 245.09, 957.13, 673.79, 967.36, 683.32, 155.42, 420.75,grape_y),
+  image = c(rep("./images/bush.png", 16), "./images/grape.png")  # Add the image path to the dataframe
+)
+
+
+```
+
+## Plot
+```{r}
+
+# Create the main plot
+Plot_oneAppleGrape <- ggplot() +  # Start with an empty plot
+  # Add the density tiles with explicit data reference
+  geom_tile(
+    data = Data_oneAppleGrape ,
+    aes(x = x, y = y, fill = density)
+  ) +
+  # Add the images with explicit data reference and aesthetics
+  ggimage::geom_image(
+    data = images,
+    aes(x = x, y = y, image = image),  # Specify image as an aesthetic
+    size = 0.12  # Adjust size as needed (0.3 might be too large)
+  ) +
+  # Continue with your styling
+  scale_fill_gradientn(
+    colors = c("white", "#CCCCCC", "#777777", "#333333", "#000000"),
+    values = c(0, 0.25, 0.5, 0.75, 1)
+  ) +
+  coord_cartesian(xlim = c(0, 1920), ylim = c(0, 1080)) +  # Use this instead
+  theme_void() +
+  labs(fill = "Activation") +
+  theme(legend.position = "none")
+
+ggsave(
+  plot = Plot_oneAppleGrape,
+  filename = str_glue("{figure_path}OneAppleGrape.pdf"),
+  width = 9.6,  height = 5.4
+)
+
+```
+
+
+# Two Apple with grape
+
+## Data
+
+```{r}
+
+# Parameters
+apple1_x <- 1200
+apple1_y <- 600
+apple2_x <- 408.34
+apple2_y <- 582.94
+grape_x <- 600
+grape_y <- 720
+beta <- -5.2  # You can adjust this parameter to control how quickly density drops off
+betag <- -4.8
+
+# Create a grid of points (using fewer points for efficiency)
+# Note: Using by=1 will create a very large dataset (over 2 million points)
+# Consider using a larger step size for development and then reducing for final output
+Data_twoAppleGrape <- expand_grid(
+  x = seq(0, 1920, by = 1),  # Using by=5 for development, change to by=1 for final output
+  y = seq(0, 1080, by = 1)   # Using by=5 for development, change to by=1 for final output
+)
+
+# Calculate density based on distance from peak point
+Data_twoAppleGrape <- Data_twoAppleGrape %>%
+  mutate(
+    distance1 = sqrt((x - apple1_x)^2 + (y - apple1_y)^2),
+    distance2 = sqrt((x - apple2_x)^2 + (y - apple2_y)^2),
+    distanceg = sqrt((x - grape_x)^2 + (y - grape_y)^2),
+    density1 = exp(-exp(beta) * distance1),
+    density2 = exp(-exp(beta) * distance2),
+    densityg = exp(-exp(betag) * distanceg),
+    density = density1 + density2 + densityg,
+    density = ifelse(density < 0.10, 0, density)
+  )
+
+# Your image positions
+images <- data.frame(
+  x = c(408.34, 1079.43, 728.14, 1482.78, 155.29, 1657.93, 977.81, 510.95,
+        1200, 273.80, 1771.30, 876.12, 1329.45, 1475.61, 564.35, 1866.55,grape_x),
+  y = c(582.94, 813.42, 354.66, 217.32, 817.19, 642.46, 143.95, 982.55,
+        600, 245.09, 957.13, 673.79, 967.36, 683.32, 155.42, 420.75,grape_y),
+  image = c(rep("./images/bush.png", 16), "./images/grape.png")  # Add the image path to the dataframe
+)
+
+
+```
+
+## Plot
+```{r}
+
+# Create the main plot
+Plot_twoAppleGrape <- ggplot() +  # Start with an empty plot
+  # Add the density tiles with explicit data reference
+  geom_tile(
+    data = Data_twoAppleGrape ,
+    aes(x = x, y = y, fill = density)
+  ) +
+  # Add the images with explicit data reference and aesthetics
+  ggimage::geom_image(
+    data = images,
+    aes(x = x, y = y, image = image),  # Specify image as an aesthetic
+    size = 0.12  # Adjust size as needed (0.3 might be too large)
+  ) +
+  # Continue with your styling
+  scale_fill_gradientn(
+    colors = c("white", "#CCCCCC", "#777777", "#333333", "#000000"),
+    values = c(0, 0.25, 0.5, 0.75, 1)
+  ) +
+  coord_cartesian(xlim = c(0, 1920), ylim = c(0, 1080)) +  # Use this instead
+  theme_void() +
+  labs(fill = "Activation") +
+  theme(legend.position = "none")
+
+ggsave(
+  plot = Plot_twoAppleGrape,
+  filename = str_glue("{figure_path}TwoAppleGrape.pdf"),
+  width = 9.6,  height = 5.4
+)
+
+```

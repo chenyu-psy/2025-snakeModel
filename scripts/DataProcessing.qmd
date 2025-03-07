@@ -1,0 +1,179 @@
+---
+title: "Data processing"
+author: "Chenyu"
+date: "2025/03/06"
+output:
+  html_document:
+  toc: yes
+editor_options: 
+  chunk_output_type: console
+---
+
+# 1 Initial setting
+```{r setup, include=FALSE}
+
+# for knitting
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 1.1 Clear workspace and set up default color
+```{r reset, include=FALSE}
+graphics.off()
+rm(list=ls(all.names = TRUE))
+options(digits = 3)
+options(ggplot2.discrete.colour= c("#615F63","#FF7F6F","#2F7FC1","#FFBE7A"))
+options(ggplot2.discrete.fill= c("#615F63","#FF7F6F","#2F7FC1","#FFBE7A"))
+
+```
+
+## 1.2 Package and file path
+```{r primary setting, include=FALSE}
+
+# package list
+packages = c("tidyverse")
+# get the package names that are not installed
+missing_packages <- setdiff(packages, rownames(installed.packages()))
+if (length(missing_packages) > 0) install.packages(missing_packages)
+# library package
+suppressMessages(sapply(packages, library, character.only = TRUE))
+
+```
+
+# 2 Data processing
+
+## 2.1 Import data
+
+```{r}
+
+Data_raw <- arrow::read_feather("./data/Data_snakeGame_beh.feather") %>% 
+  rename(
+    participant = participant_id,
+    trial = trial_id,
+    event = event_id
+  ) %>% 
+  mutate(
+    event = relabel(
+      as.character(event),
+      labels = c("1" = "grape", "2" = "apple", "3" = "reminder", "4" = "bush")
+    ),
+    setsize = ifelse(is.na(apple_2),1, 2),
+    condition = ifelse(is.na(grape), "control","dual")
+  ) %>% 
+  mutate(
+    reminder = row_number(),
+    .by = c(participant, trial, event)
+  ) %>% 
+  mutate(
+    reminder = ifelse(event=="reminder", reminder, 0),
+    initial_position = start_position[1],
+    .by = c(participant, trial)
+  )
+
+```
+
+## Calculate distance between the apple and the bushes, and the distance between the apple and the snake
+
+```{r}
+
+# Your distance function
+distance <- function(x, y) {
+  if (is.null(x) || is.null(y) ||
+      length(x) != 2 || length(y) != 2 ||
+      anyNA(x) || anyNA(y)) {
+    return(NA_real_)
+  }
+  sqrt((x[1] - y[1])^2 + (x[2] - y[2])^2)
+}
+
+# We'll add distances to a copy of Data_raw
+Data_dist <- Data_raw
+
+# Loop over apple & bush columns
+for (a in 1:2) {
+  
+  # The position of the apples
+  apple_list <- Data_dist[[str_glue("apple_{a}")]]
+  
+  for (b in 1:16) {
+    colname <- str_glue("da{a}b{b}")
+    
+    # The position of the bushes
+    bush_list  <- Data_dist[[str_glue("bush_{b}")]]
+    
+    # Use purrr::map2_dbl to compute the distance element-wise (row-by-row)
+    Data_dist[[colname]] <- map2_dbl(
+      apple_list,
+      bush_list,
+      distance  # .x corresponds to apple, .y to bush
+    )
+  }
+}
+
+# The position of the grapes
+grape_list <- Data_dist$grape
+snake_list <- Data_dist$initial_position
+start_list <- Data_dist$start_position
+
+# Loop over the grape/snake and bush columns
+for (b in 1:16) {
+  
+  grape_name <- str_glue("dgb{b}")
+  snake_name <- str_glue("dib{b}")
+  start_name <- str_glue("dsb{b}")
+    
+  # The position of the bushes
+  bush_list  <- Data_dist[[str_glue("bush_{b}")]]
+  
+  # Use purrr::map2_dbl to compute the distance element-wise (row-by-row)
+  Data_dist[[grape_name]] <- map2_dbl(
+    grape_list,
+    bush_list,
+    distance 
+  )
+  
+  Data_dist[[snake_name]] <- map2_dbl(
+    snake_list,
+    bush_list,
+    distance 
+  )
+  
+  Data_dist[[start_name]] <- map2_dbl(
+    start_list,
+    bush_list,
+    distance
+  )
+  
+}
+
+
+```
+
+## filter and select data
+
+```{r}
+
+Data <- Data_dist %>% 
+  select(
+    participant, trial, event, reminder, setsize, condition, 
+    starts_with("da"), starts_with("dg"), starts_with("di"), starts_with("ds"), response) %>% 
+  filter(response > 0) %>% 
+  mutate(
+    respID = row_number(),
+    .by = c(participant, trial)
+  ) %>% 
+  mutate(across(starts_with("d"), ~ . / 100))
+
+
+```
+
+## Save the processed data
+
+```{r}
+
+write_csv(
+  Data,
+  str_glue("./data/Data_snakeGame_processed.csv")
+)
+
+
+```

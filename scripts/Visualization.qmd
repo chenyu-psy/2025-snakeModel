@@ -1,0 +1,213 @@
+---
+title: "Visualization"
+author: "Chenyu"
+date: "05/07/2024"
+output:
+  html_document:
+  toc: yes
+editor_options: 
+  chunk_output_type: console
+---
+
+# 1 Initial setting
+```{r setup, include=FALSE}
+
+# for knitting
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 1.1 Clear workspace and set up default color
+```{r reset, include=FALSE}
+graphics.off()
+rm(list=ls(all.names = TRUE))
+options(digits = 3)
+options(ggplot2.discrete.colour= c("#615F63","#FF7F6F","#2F7FC1","#FFBE7A"))
+options(ggplot2.discrete.fill= c("#615F63","#FF7F6F","#2F7FC1","#FFBE7A"))
+
+```
+
+## 1.2 Package and file path
+```{r primary setting, include=FALSE}
+
+# package list
+packages = c("tidyverse", "brms", "bmm", "smartr","bayestestR")
+# get the package names that are not installed
+missing_packages <- setdiff(packages, rownames(installed.packages()))
+# install the missing packages
+if ("smartr" %in% missing_packages) devtools::install_github("chenyu-psy/smartr@develop")
+if ("bmm" %in% missing_packages) devtools::install_github("venpopov/bmm")
+if (length(missing_packages) > 0) install.packages(missing_packages)
+# library package
+suppressMessages(sapply(packages, library, character.only = TRUE))
+
+# import private functions (do not print the output)
+nothing <- sapply(list.files("./functions", pattern = "*.R", full.names = TRUE), source)
+rm(nothing)
+
+
+# theme
+theme_set(theme_bw())
+dodge1 = position_dodge(0.1)
+dodge2 = position_dodge(0.2)
+dodge4 = position_dodge(0.4)
+
+
+# task name
+task = "Exp1"
+model_path <- str_glue("./models/Models_{task}/")
+figure_path <- str_glue("./figures/Figures_{task}/")
+
+# check whether the folders are existent or not. If not, create a new one
+dir.create(file.path(model_path), showWarnings = FALSE)
+dir.create(file.path(figure_path), showWarnings = FALSE)
+```
+
+# 2 Import data
+
+```{r}
+
+Data <- read_csv(str_glue("./data/Data_snakeGame_processed.csv"))
+
+```
+
+# Visualization
+
+## 3.1 How does the distance between the apple and the bushes and between the grape and the bushes affect response
+
+### 3.1.1 Set-size 1
+```{r}
+
+Data_SS1_Dual <- Data %>% 
+  filter(setsize==1, condition=="dual", respID==1) %>%
+  rowwise() %>%
+  mutate(
+    toApple = c_across(starts_with("da1b"))[response],
+    toGrape = c_across(starts_with("dgb"))[response]
+  ) %>% 
+  dplyr::select(participant, trial, response, toApple, toGrape)
+
+Plot_Density_SS1_Dual <- Data_SS1_Dual %>% 
+  mutate(
+    toApple = ifelse(toApple==0, jitter(toApple, amount = 0.05), toApple), 
+    toGrape = ifelse(toGrape==0, jitter(toGrape, amount = 0.05), toGrape),
+  ) %>% 
+  ggplot(aes(x = toApple, y = toGrape))+
+  geom_density_2d(alpha = 0.5)+
+  geom_density_2d_filled(alpha=0.8)+
+  geom_point(alpha = 0.8)+
+  scale_x_continuous(
+    labels = function(x) x*100  # Convert back to original scale
+  ) +
+  scale_y_continuous(
+    labels = function(x) x*100  # Convert back to original scale
+  ) +
+  labs(
+    x = "Distance to the apple",
+    y = "Distance to the grape"
+  )
+
+ggsave(
+  plot = Plot_Density_SS1_Dual,
+  path = figure_path,
+  filename = str_glue("Plot_{task}_SS1_Dual_Density.pdf"),
+  width = 8, height = 6
+)
+
+```
+
+### 3.1.2 Set-size 2
+
+```{r}
+
+Data_SS2_Dual <- Data %>% 
+  filter(setsize==2, condition=="dual", respID==1) %>%
+  rowwise() %>%
+  mutate(
+    toApple1 = c_across(starts_with("da1b"))[response],
+    toApple2 = c_across(starts_with("da2b"))[response],
+    toGrape = c_across(starts_with("dgb"))[response],
+    toApple = min(toApple1, toApple2)
+  ) %>% 
+  dplyr::select(participant, trial, response, toApple1, toApple2, toApple, toGrape) %>% 
+  filter(toApple > 0.01)
+
+Plot_Density_SS2_Dual <- Data_SS2_Dual %>% 
+  mutate(
+    toApple = ifelse(toApple==0, jitter(toApple, amount = 0.05), toApple), 
+    toGrape = ifelse(toGrape==0, jitter(toGrape, amount = 0.05), toGrape),
+  ) %>% 
+  ggplot(aes(x = toApple, y = toGrape))+
+  geom_density_2d(alpha = 0.5)+
+  geom_density_2d_filled(alpha=0.8)+
+  geom_jitter(alpha = 0.8, width = 0.1)+
+  # geom_point(alpha = 0.8)+
+  scale_x_continuous(
+    labels = function(x) x*100  # Convert back to original scale
+  ) +
+  scale_y_continuous(
+    labels = function(x) x*100  # Convert back to original scale
+  ) +
+  labs(
+    x = "Distance to the apple",
+    y = "Distance to the grape"
+  )
+
+Plot_Density_SS2_Apples <- Data_SS2_Dual %>% 
+  ggplot(aes(x = toApple1, y = toApple2))+
+  geom_density_2d(alpha = 0.5)+
+  geom_density_2d_filled(alpha=0.8)+
+  geom_jitter(alpha = 0.8, width = 0.1)+
+  # geom_point(alpha = 0.8)+
+  scale_x_continuous(
+    labels = function(x) x*100  # Convert back to original scale
+  ) +
+  scale_y_continuous(
+    labels = function(x) x*100  # Convert back to original scale
+  ) +
+  labs(
+    x = "Distance to the first apple",
+    y = "Distance to the second apple"
+  )
+
+
+```
+
+
+## 3.1 initial position vs. grape position
+
+```{r}
+
+Data_SS2_Dual <- Data %>% 
+  filter(setsize==2, condition=="dual", respID==1, dsb1==dgb1) %>%
+  rowwise() %>%
+  mutate(
+    toInitial = c_across(starts_with("dib"))[response],
+    toGrape = c_across(starts_with("dgb"))[response]
+  ) %>% 
+  dplyr::select(participant, trial, response, toInitial, toGrape)
+
+Plot_Position_SS2_Dual <- Data_SS2_Dual %>% 
+  ggplot(aes(x = toInitial, y = toGrape))+
+  # geom_point(alpha = 0.8)+
+  geom_density_2d(alpha = 0.5)+
+  geom_density_2d_filled(alpha=0.8)+
+  scale_x_continuous(
+    labels = function(x) x*100  # Convert back to original scale
+  ) +
+  scale_y_continuous(
+    labels = function(x) x*100  # Convert back to original scale
+  ) +
+  labs(
+    x = "Distance to the initial position",
+    y = "Distance to the grape's position"
+  )
+
+ggsave(
+  plot = Plot_Density_SS1_Dual,
+  path = figure_path,
+  filename = str_glue("Plot_{task}_SS1_Dual_Density.pdf"),
+  width = 8, height = 6
+)
+
+```
+

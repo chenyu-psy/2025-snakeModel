@@ -1,0 +1,354 @@
+---
+title: "The benefit of removal (Exp2)"
+author: "Chenyu"
+date: "05/07/2024"
+output:
+  html_document:
+  toc: yes
+editor_options: 
+  chunk_output_type: console
+---
+
+# 1 Initial setting
+```{r setup, include=FALSE}
+
+# for knitting
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 1.1 Clear workspace and set up default color
+```{r reset, include=FALSE}
+graphics.off()
+rm(list=ls(all.names = TRUE))
+options(digits = 3)
+options(ggplot2.discrete.colour= c("#615F63","#FF7F6F","#2F7FC1","#FFBE7A"))
+options(ggplot2.discrete.fill= c("#615F63","#FF7F6F","#2F7FC1","#FFBE7A"))
+
+```
+
+## 1.2 Package and file path
+```{r primary setting, include=FALSE}
+
+# package list
+packages = c("tidyverse", "brms", "bmm", "smartr","bayestestR")
+# get the package names that are not installed
+missing_packages <- setdiff(packages, rownames(installed.packages()))
+# install the missing packages
+if ("smartr" %in% missing_packages) devtools::install_github("chenyu-psy/smartr@develop")
+if ("bmm" %in% missing_packages) devtools::install_github("venpopov/bmm")
+if (length(missing_packages) > 0) install.packages(missing_packages)
+# library package
+suppressMessages(sapply(packages, library, character.only = TRUE))
+
+# import private functions (do not print the output)
+nothing <- sapply(list.files("./functions", pattern = "*.R", full.names = TRUE), source)
+rm(nothing)
+
+
+# theme
+theme_set(theme_bw())
+dodge1 = position_dodge(0.1)
+dodge2 = position_dodge(0.2)
+dodge4 = position_dodge(0.4)
+
+
+# task name
+task = "Exp1"
+model_path <- str_glue("./models/Models_{task}/")
+figure_path <- str_glue("./figures/Figures_{task}/")
+
+# check whether the folders are existent or not. If not, create a new one
+dir.create(file.path(model_path), showWarnings = FALSE)
+dir.create(file.path(figure_path), showWarnings = FALSE)
+```
+
+# 2 Import data
+
+```{r}
+
+Data <- read_csv(str_glue("./data/Data_snakeGame_processed.csv"))
+
+```
+
+
+# 3 DM Model
+
+## 3.1 Data
+```{r}
+
+mData_DM <- Data %>% 
+  filter(respID==1, !(condition=="dual" & dsb1!=dgb1)) %>% 
+  mutate(
+    A1 = ifelse(response==1, 1, 0),
+    A2 = ifelse(response==2, 1, 0),
+    A3 = ifelse(response==3, 1, 0),
+    A4 = ifelse(response==4, 1, 0),
+    A5 = ifelse(response==5, 1, 0),
+    A6 = ifelse(response==6, 1, 0),
+    A7 = ifelse(response==7, 1, 0),
+    A8 = ifelse(response==8, 1, 0),
+    A9 = ifelse(response==9, 1, 0),
+    A10 = ifelse(response==10, 1, 0),
+    A11 = ifelse(response==11, 1, 0),
+    A12 = ifelse(response==12, 1, 0),
+    A13 = ifelse(response==13, 1, 0),
+    A14 = ifelse(response==14, 1, 0),
+    A15 = ifelse(response==15, 1, 0),
+    A16 = ifelse(response==16, 1, 0)
+  )  %>% 
+  mutate(
+    condition = factor(condition),
+    setsize = factor(setsize, labels = c("ss1", "ss2")),
+    ic = ifelse(condition=="dual",1,0),
+    ia2 = ifelse(setsize=="ss2",1,0)
+  )
+
+# Fill NA to 9999
+mData_DM[is.na(mData_DM)] <- 100
+
+contrasts(mData_DM$condition) = bayestestR::contr.equalprior(2)
+contrasts(mData_DM$setsize) = bayestestR::contr.equalprior(2)
+
+```
+
+## 3.2 Functions to generate the model
+```{r}
+
+genDMformula <- function(choice="softmax", n=16) {
+  
+  DM_formula <- bmf()
+  
+  activation_formula <- bmf()
+  
+  apple1_formula <- bmf()
+  
+  apple2_formula <- bmf()
+  
+  grape_formula <- bmf()
+  
+  for (i in 1:n) {
+    
+    # The activation received from the apple1
+    apple1_equation = str_glue("a1b{i} ~ ya*exp(-ba*da1b{i})")
+    apple1_formula <- apple1_formula + as.formula(apple1_equation)
+    
+    # The activation received from the apple2
+    apple2_equation = str_glue("a2b{i} ~ ya*exp(-ba*da1b{i})")
+    apple2_formula <- apple2_formula + as.formula(apple2_equation)
+    
+    # The activation received from the grape
+    grape_equation = str_glue("g{i} ~ yg*exp(-bg*dgb{i})")
+    grape_formula <- grape_formula + as.formula(grape_equation)
+    
+    # The total activation of the item
+    activation_equation = str_glue("a{i} ~ a1b{i} + ia2*a2b{i} + ic*g{i}")
+    activation_formula <- activation_formula + as.formula(activation_equation)
+    
+    # Correct the activation based on the distance
+    activation_corrected = str_glue("A{i} ~ exp(-ia2*bd0 * dib{i} - ia2 * ic * bdg * dgb{i}) *a{i} + b")
+    DM_formula <- DM_formula + as.formula(activation_corrected)
+    
+  }
+  
+  # add regression formulas to the model
+  DM_formula <- DM_formula + 
+    activation_formula +
+    apple1_formula +
+    apple2_formula +
+    grape_formula + bmf(
+    ya ~ 0 + setsize:condition + (0 + setsize:condition || participant),
+    ba ~ 1 + (1 || participant),
+    yg ~ 0 + condition + (0 + condition || participant),
+    bg ~ 0 + condition + (0 + condition || participant),
+    bd0 ~ 0 + setsize + (0 + setsize || participant),
+    bdg ~ 0 + setsize:condition + (0 + setsize:condition || participant))
+  
+  return (DM_formula)
+
+}
+
+genDMmodel <- function(choice="softmax") {
+  
+  par_links = list(
+      ya = "log",
+      ba = "log",
+      yg = "log",
+      bg = "log",
+      bd0 = "log",
+      bdg = "log")
+  
+  par_default_priors <- list(
+        ya = list(main = "normal(1,0.5)", effect = "normal(1,0.5)"),
+        ba = list(main = "normal(0,0.5)", effect = "normal(0,0.5)"),
+        yg = list(main = "normal(1,0.5)", effect = "normal(1,0.5)"),
+        bg = list(main = "normal(0,0.5)", effect = "normal(0,0.5)"),
+        bd0 = list(main = "normal(-2,1)", effect = "normal(-2, 1)"),
+        bdg = list(main = "normal(-2,1)", effect = "normal(-2, 1)"))
+
+  DM_model <- m3(
+    resp_cats = paste0("A",c(1:16)),
+    num_options = 1:16,
+    choice_rule = choice,
+    links = par_links,
+    default_priors = par_default_priors
+  )
+  
+  return (DM_model)
+  
+}
+
+```
+
+## 3.3 Model fit
+
+```{r}
+
+smart_runFun(
+  fun = bmm,
+  args = list(
+    data = mData_DM,
+    formula = genDMformula(),
+    model = genDMmodel(),
+    prior = c(
+      # Fix for the control condition
+      prior(constant(-100), class = "b", nlpar = "yg", coef="conditioncontrol"),
+      prior(constant(-100), class = "b", nlpar = "bg", coef="conditioncontrol"),
+      # Fix for set size 1
+      prior(constant(-100), class = "b", nlpar = "bd0", coef="setsizess1"),
+      # Fix the bdg parameter
+      prior(constant(-100), class = "b", nlpar = "bdg", coef="setsizess1:conditioncontrol"),
+      prior(constant(-100), class = "b", nlpar = "bdg", coef="setsizess1:conditiondual"),
+      prior(constant(-100), class = "b", nlpar = "bdg", coef="setsizess2:conditioncontrol")
+      ),
+    chains = 4,
+    cores = 4,
+    iter = 2000,
+    warmup = 1000,
+    control = list(adapt_delta = 0.95),
+    save_pars = save_pars(all = TRUE),
+    sample_prior = "yes",
+    init = 0,
+    backend = "cmdstanr",
+    file = str_glue("{model_path}Model_DM_{task}_full.rds")
+  ),
+  name = str_glue("Model_DM_{task}_full")
+)
+
+```
+
+## 3.4 Bayes Factors
+
+```{r}
+
+Model_DM <- readRDS(str_glue("{model_path}Model_DM_{task}_full.rds"))
+
+
+```
+
+
+## 3.5 Posterior Distribution
+
+```{r}
+
+Model_DM <- readRDS(str_glue("{model_path}Model_DM_{task}_full.rds"))
+
+
+
+
+```
+
+
+
+
+## 3.6 Prediciton
+
+```{r}
+
+Model_DM <- readRDS(str_glue("{model_path}Model_DM_{task}_SS2_DM.rds"))
+
+Data_Model_DM <- Model_DM$data %>% 
+  mutate(
+    response = names(data.frame(Y))[max.col(data.frame(Y), ties.method = "first")]
+  ) %>% 
+  select(-Y)
+
+Pred_DM <- Model_DM %>% 
+  tidybayes::epred_draws(
+    newdata = Data_Model_DM,
+    ndraws = 100
+  ) %>% 
+  ungroup() %>% 
+  filter(response==.category) %>%
+  select(.draw, condition, .epred) 
+
+Table_DM_pred <- Pred_DM %>% 
+  summarise(
+    mean = mean(.epred),
+    .by = c(condition)
+  )
+
+
+Plot_SS1_Condition <- Data %>% 
+  filter(setsize==1, respID==1) %>%
+  rowwise() %>%
+  mutate(toApple = c_across(starts_with("da1b"))[response]) %>% 
+  ungroup() %>%
+  mutate(correct = ifelse(toApple < 0.01, 1, 0)) %>%
+  agg_plot(y = correct, within = c("condition"), group = "participant") %>%
+  ggplot(aes(x = condition, y = mean, group = condition))+
+  geom_errorbar(
+    aes(ymin = mean - ci, ymax = mean + ci), 
+    color = "black", width = 0.1, linewidth=0.8,
+     position = dodge2)+
+  geom_point()+
+  geom_point(
+    data = Table_DM_pred,
+    mapping = aes(x = condition, y = mean),
+    shape = 17,
+    size = 3, 
+    color = "#FF7F6F")+
+  labs(
+    x = "Condition",
+    y = "Accuracy")+
+  ylim(0,1)+
+  theme_classic()+
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 10.5)
+  )
+
+ggsave(
+  plot = Plot_SS1_Condition,
+  path = figure_path,
+  filename = str_glue("Plot_{task}_SS1_DM_Pred_accuracy.pdf"),
+  width = 5, height = 4
+)
+
+```
+
+
+```{r}
+
+act_fun <- function(x, slope) {
+  
+  exp(-slope*x)
+  
+}
+
+ggplot()+
+  geom_function(
+    fun = act_fun,
+    args = list(slope = exp(-3.48)),
+    xlim=c(0.6,12)
+  )+
+  ylim(0,1)+
+  labs(
+    x = "Distance",
+    y = "Preference"
+  )
+
+
+
+```
+
+
